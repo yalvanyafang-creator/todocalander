@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>综合日程与待办看板</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome 图标 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* 自定义轻量滚动条 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.03);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(156, 163, 175, 0.4);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(107, 114, 128, 0.6);
+    }
+    .trash-drag-over {
+      border-color: #ef4444 !important;
+      background-color: #fee2e2 !important;
+      transform: scale(1.01);
+    }
+    .calendar-cell:hover .add-task-btn {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans select-none">
+
+  <!-- 顶部导航栏 -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+    <div class="max-w-[1720px] mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
+      
+      <!-- Logo与主标题 -->
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-200">
+          <i class="fa-regular fa-calendar-check text-xl"></i>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold text-slate-900 tracking-tight leading-none">综合智能日程看板</h1>
+          <p class="text-xs text-slate-500 mt-1">日程规划 · 待办自动归集 · 废弃归档管理</p>
+        </div>
+      </div>
+
+      <!-- 日历月份快速切换导航 -->
+      <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner">
+        <button id="prevMonthBtn" title="上个月" class="p-2 rounded-lg hover:bg-white text-slate-600 hover:text-indigo-600 transition shadow-xs">
+          <i class="fa-solid fa-chevron-left text-sm"></i>
+        </button>
+        <div id="currentMonthYearLabel" class="px-5 text-sm sm:text-base font-semibold text-slate-800 min-w-[140px] text-center">
+          2026年 10月
+        </div>
+        <button id="nextMonthBtn" title="下个月" class="p-2 rounded-lg hover:bg-white text-slate-600 hover:text-indigo-600 transition shadow-xs">
+          <i class="fa-solid fa-chevron-right text-sm"></i>
+        </button>
+        <button id="todayBtn" class="ml-2 px-3 py-1.5 text-xs font-semibold bg-white text-indigo-600 hover:bg-indigo-50 border border-slate-200 rounded-lg shadow-xs transition">
+          今天
+        </button>
+      </div>
+
+      <!-- 数据统计与操作 -->
+      <div class="flex items-center space-x-3 text-xs sm:text-sm">
+        <div class="flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-700">
+          <span class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+          <span>未完成: <strong id="statPendingCount" class="font-bold">0</strong> 项</span>
+        </div>
+        <div class="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-lg text-emerald-700">
+          <i class="fa-solid fa-check text-emerald-500"></i>
+          <span>已完成: <strong id="statCompletedCount" class="font-bold">0</strong> 项</span>
+        </div>
+        <button id="globalAddTaskBtn" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm font-medium flex items-center space-x-1.5 transition">
+          <i class="fa-solid fa-plus text-xs"></i>
+          <span>新建待办</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- 主体工作区：左 70% (7/10) 日程板，右 30% (3/10) 待办汇总与垃圾桶 -->
+  <main class="flex-1 max-w-[1780px] w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-10 gap-6 items-start">
+    
+    <!-- 左侧：月度日历网格 (70% 宽度) -->
+    <section class="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+      <!-- 星期表头 -->
+      <div class="grid grid-cols-7 bg-slate-50/80 border-b border-slate-200 text-center font-semibold text-xs sm:text-sm py-3 text-slate-600">
+        <span class="text-rose-500 font-bold">星期日 (Sun)</span>
+        <span>星期一 (Mon)</span>
+        <span>星期二 (Tue)</span>
+        <span>星期三 (Wed)</span>
+        <span>星期四 (Thu)</span>
+        <span>星期五 (Fri)</span>
+        <span class="text-rose-500 font-bold">星期六 (Sat)</span>
+      </div>
+
+      <!-- 日历网格容器 (6周 x 7天 = 42格子) -->
+      <div id="calendarGrid" class="grid grid-cols-7 auto-rows-fr bg-slate-200 gap-px border-b border-slate-200 min-h-[680px]">
+        <!-- 动态注入日期格子 -->
+      </div>
+    </section>
+
+    <!-- 右侧容器 (30% 宽度)：右上待办事项汇总 + 右下事项垃圾桶 -->
+    <div class="lg:col-span-3 flex flex-col space-y-6">
+      
+      <!-- 右上角：未完成待办事项汇总框 -->
+      <aside class="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-[420px]">
+        <!-- 侧边栏标题与筛选 -->
+        <div class="p-3.5 border-b border-slate-100 flex flex-col gap-2.5 bg-gradient-to-b from-slate-50 to-white rounded-t-2xl">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <div class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
+                <i class="fa-solid fa-list-check text-xs"></i>
+              </div>
+              <h2 class="font-bold text-slate-800 text-sm sm:text-base">待办事项汇总</h2>
+            </div>
+            <span id="pendingBadge" class="bg-amber-100 text-amber-700 text-xs px-2.5 py-0.5 rounded-full font-semibold">0 待处理</span>
+          </div>
+
+          <!-- 筛选标签栏 -->
+          <div class="flex items-center gap-1.5 text-xs overflow-x-auto pb-0.5">
+            <button class="filter-tab-btn active px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-600 font-medium border border-indigo-200 transition" data-filter="all">全部</button>
+            <button class="filter-tab-btn px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 transition" data-filter="today">今日</button>
+            <button class="filter-tab-btn px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 transition" data-filter="overdue">已逾期</button>
+            <button class="filter-tab-btn px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 transition" data-filter="high">高优</button>
+          </div>
+        </div>
+
+        <!-- 未完成列表区域 -->
+        <div id="pendingTaskList" class="flex-1 overflow-y-auto p-3 space-y-2">
+          <!-- 动态生成待办项 -->
+        </div>
+
+        <!-- 快速添加无日期待办 -->
+        <div class="p-2.5 bg-slate-50 border-t border-slate-100 rounded-b-2xl">
+          <form id="quickAddForm" class="flex items-center space-x-2">
+            <input type="text" id="quickAddInput" placeholder="快速添加待办(默认今天)..." class="flex-1 text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500 transition">
+            <button type="submit" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition shrink-0">
+              <i class="fa-solid fa-plus"></i>
+            </button>
+          </form>
+        </div>
+      </aside>
+
+      <!-- 右下角：事项垃圾桶 (放弃事项 / 归档) -->
+      <section id="trashDropZone" class="bg-white rounded-2xl border-2 border-dashed border-rose-200 shadow-sm transition-all duration-200 flex flex-col h-[320px] overflow-hidden">
+        <!-- 垃圾桶头部栏 -->
+        <div class="p-3 px-3.5 bg-rose-50/60 border-b border-rose-100 flex items-center justify-between gap-2">
+          <div class="flex items-center space-x-2 min-w-0">
+            <div class="w-7 h-7 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+              <i class="fa-solid fa-trash-can text-xs"></i>
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center space-x-1.5">
+                <h3 class="font-bold text-slate-800 text-sm truncate">事项垃圾桶</h3>
+                <span id="trashCountBadge" class="bg-rose-200 text-rose-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">0</span>
+              </div>
+              <p class="text-[10px] text-slate-500 truncate">可直接拖拽事项丢入此处放弃</p>
+            </div>
+          </div>
+
+          <div class="flex items-center space-x-1 shrink-0">
+            <button id="emptyTrashBtn" class="text-xs px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-xs transition flex items-center space-x-1 font-medium" title="彻底清空放弃项">
+              <i class="fa-regular fa-trash-can text-[10px]"></i>
+              <span>清空</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 垃圾桶事项卡片列表 -->
+        <div id="trashContentWrapper" class="flex-1 overflow-y-auto p-3">
+          <div id="trashList" class="space-y-2">
+            <!-- 动态放置被放弃的事项 -->
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <!-- 模态框：添加 / 编辑待办事项 -->
+  <div id="taskModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-200 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 transform scale-95 transition-transform duration-200" id="taskModalDialog">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <h3 id="modalTitle" class="text-lg font-bold text-slate-800">在特定日期添加待办事项</h3>
+        <button id="closeModalBtn" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form id="taskForm" class="mt-4 space-y-4">
+        <input type="hidden" id="taskFormId">
+
+        <!-- 事项内容 -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">事项名称 <span class="text-rose-500">*</span></label>
+          <input type="text" id="taskInputTitle" required placeholder="如：部门周会、完成财务对账..." class="w-full text-sm px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+        </div>
+
+        <!-- 计划日期 -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">计划日期 <span class="text-rose-500">*</span></label>
+          <input type="date" id="taskInputDate" required class="w-full text-sm px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 transition">
+        </div>
+
+        <!-- 优先级与标签 -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">优先级</label>
+            <select id="taskInputPriority" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 bg-white">
+              <option value="medium">中等优先级</option>
+              <option value="high">高优先级 (紧急)</option>
+              <option value="low">低优先级 (稍后)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">分类标签</label>
+            <select id="taskInputCategory" class="w-full text-sm px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 bg-white">
+              <option value="work">💼 工作任务</option>
+              <option value="life">🌱 个人生活</option>
+              <option value="study">📚 学习提升</option>
+              <option value="health">🏃 健康运动</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 备注描述 -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">备注说明 (可选)</label>
+          <textarea id="taskInputDesc" rows="2" placeholder="添加补充细节、链接或要求..." class="w-full text-sm px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 transition"></textarea>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="pt-3 flex items-center justify-end space-x-2.5">
+          <button type="button" id="cancelModalBtn" class="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition">取消</button>
+          <button type="submit" class="px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-100 transition">确认保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 轻量通知提示条 (Toast) -->
+  <div id="toastNotification" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none flex items-center bg-slate-900 text-white text-xs sm:text-sm px-4 py-3 rounded-xl shadow-xl space-x-2.5">
+    <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="toastMsg">操作成功</span>
+  </div>
+
+  <!-- 脚本逻辑 -->
+  <script>
+    /**
+     * 综合日程管理系统
+     * 架构模块：状态中心、日历引擎、未完成集算器、垃圾桶处理器、事件交互
+     */
+
+    // --- 1. 核心状态存储 ---
+    const STATE_KEY = 'COMPREHENSIVE_CALENDAR_TASKS_v2';
+    let tasks = [];
+
+    // 当前视图年与月 (0-11)
+    const today = new Date();
+    let currentYear = today.getFullYear();
+    let currentMonth = today.getMonth();
+    let activeFilter = 'all';
+
+    // 默认内置的示例数据（首次载入体验）
+    function initDefaultData() {
+      const year = currentYear;
+      const monthStr = String(currentMonth + 1).padStart(2, '0');
+      const day = today.getDate();
+      const pad = (n) => String(n).padStart(2, '0');
+
+      return [
+        {
+          id: 'task-1',
+          title: '审核周度运营报表与预算',
+          date: `${year}-${monthStr}-${pad(day)}`,
+          priority: 'high',
+          category: 'work',
+          desc: '需重点核对市场投放ROI',
+          completed: false,
+          abandoned: false,
+          createdAt: Date.now() - 3600000 * 5
+        },
+        {
+          id: 'task-2',
+          title: '30分钟有氧慢跑打卡',
+          date: `${year}-${monthStr}-${pad(day)}`,
+          priority: 'medium',
+          category: 'health',
+          desc: '公园慢跑5公里',
+          completed: true,
+          abandoned: false,
+          createdAt: Date.now() - 3600000 * 2
+        },
+        {
+          id: 'task-3',
+          title: '整理季度OKR目标规划',
+          date: `${year}-${monthStr}-${pad(Math.min(day + 1, 28))}`,
+          priority: 'high',
+          category: 'work',
+          desc: '准备周五述职PPT',
+          completed: false,
+          abandoned: false,
+          createdAt: Date.now() - 3600000 * 10
+        },
+        {
+          id: 'task-4',
+          title: '阅读《深度工作》第3章节',
+          date: `${year}-${monthStr}-${pad(Math.max(1, day - 1))}`,
+          priority: 'low',
+          category: 'study',
+          desc: '摘录读书笔记',
+          completed: false,
+          abandoned: false,
+          createdAt: Date.now() - 3600000 * 20
+        },
+        {
+          id: 'task-5',
+          title: '原本计划的线下茶话会（因雨取消）',
+          date: `${year}-${monthStr}-${pad(Math.max(1, day - 2))}`,
+          priority: 'low',
+          category: 'life',
+          desc: '天气突变，大家协商放弃本次行程',
+          completed: false,
+          abandoned: true,
+          abandonedAt: Date.now() - 3600000 * 8,
+          createdAt: Date.now() - 86400000
+        }
+      ];
+    }
+
+    // 从内存中读取
+    function loadState() {
+      try {
+        const stored = localStorage.getItem(STATE_KEY);
+        if (stored) {
+          tasks = JSON.parse(stored);
+        } else {
+          tasks = initDefaultData();
+          saveState();
+        }
+      } catch (e) {
+        tasks = initDefaultData();
+      }
+    }
+
+    // 写入内存持久化
+    function saveState() {
+      try {
+        localStorage.setItem(STATE_KEY, JSON.stringify(tasks));
+      } catch (e) {
+        console.error('存储状态失败', e);
+      }
+      renderAll();
+    }
+
+    // --- 2. 辅助工具函数 ---
+    function formatYearMonth(year, month) {
+      const monthNames = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+      return `${year}年 ${monthNames[month]}`;
+    }
+
+    function formatDateString(year, month, day) {
+      const m = String(month + 1).padStart(2, '0');
+      const d = String(day).padStart(2, '0');
+      return `${year}-${m}-${d}`;
+    }
+
+    function getTodayString() {
+      return formatDateString(today.getFullYear(), today.getMonth(), today.getDate());
+    }
+
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toastNotification');
+      const toastMsg = document.getElementById('toastMsg');
+      const toastIcon = document.getElementById('toastIcon');
+
+      toastMsg.textContent = message;
+      if (type === 'danger') {
+        toastIcon.className = "fa-solid fa-trash-can text-rose-400";
+      } else if (type === 'info') {
+        toastIcon.className = "fa-solid fa-rotate-left text-amber-400";
+      } else {
+        toastIcon.className = "fa-solid fa-circle-check text-emerald-400";
+      }
+
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 2400);
+    }
+
+    // --- 3. 渲染主控制器 ---
+    function renderAll() {
+      renderCalendar();
+      renderPendingBox();
+      renderTrashBin();
+      updateStatistics();
+    }
+
+    // --- 4. 日历网格渲染 ---
+    function renderCalendar() {
+      const calendarGrid = document.getElementById('calendarGrid');
+      document.getElementById('currentMonthYearLabel').textContent = formatYearMonth(currentYear, currentMonth);
+
+      // 计算本月第一天和总天数
+      const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay(); // 0(周日) - 6(周六)
+      const daysInCurrentMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+      
+      // 上个月的总天数
+      const daysInPrevMonth = new Date(currentYear, currentMonth, 0).getDate();
+
+      calendarGrid.innerHTML = '';
+
+      const totalCells = 42; // 标准6周显示
+      const todayStr = getTodayString();
+
+      for (let i = 0; i < totalCells; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'calendar-cell bg-white min-h-[105px] p-1.5 sm:p-2 flex flex-col justify-between transition-colors relative group';
+
+        let cellDateStr = '';
+        let displayDayNumber = 0;
+        let isCurrentMonth = true;
+
+        if (i < firstDayOfMonth) {
+          // 上个月剩余天数
+          isCurrentMonth = false;
+          displayDayNumber = daysInPrevMonth - firstDayOfMonth + i + 1;
+          const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+          const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+          cellDateStr = formatDateString(prevYear, prevMonth, displayDayNumber);
+          cell.classList.add('bg-slate-50/60', 'text-slate-400');
+        } else if (i < firstDayOfMonth + daysInCurrentMonth) {
+          // 当前月天数
+          displayDayNumber = i - firstDayOfMonth + 1;
+          cellDateStr = formatDateString(currentYear, currentMonth, displayDayNumber);
+          if (cellDateStr === todayStr) {
+            cell.classList.add('bg-indigo-50/30');
+          }
+        } else {
+          // 下个月开始的天数
+          isCurrentMonth = false;
+          displayDayNumber = i - (firstDayOfMonth + daysInCurrentMonth) + 1;
+          const nextMonth = currentMonth === 11 ? 0 : currentMonth + 1;
+          const nextYear = currentMonth === 11 ? currentYear + 1 : currentYear;
+          cellDateStr = formatDateString(nextYear, nextMonth, displayDayNumber);
+          cell.classList.add('bg-slate-50/60', 'text-slate-400');
+        }
+
+        // 绑定拖放事件支持（将任务拖到某个日期上改变日程）
+        cell.setAttribute('data-date', cellDateStr);
+        cell.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          cell.classList.add('bg-indigo-100/50');
+        });
+        cell.addEventListener('dragleave', () => {
+          cell.classList.remove('bg-indigo-100/50');
+        });
+        cell.addEventListener('drop', (e) => {
+          e.preventDefault();
+          cell.classList.remove('bg-indigo-100/50');
+          const taskId = e.dataTransfer.getData('text/plain');
+          if (taskId) {
+            rescheduleTask(taskId, cellDateStr);
+          }
+        });
+
+        // 日期顶部行 (数字 + 快速添加按钮)
+        const isToday = (cellDateStr === todayStr);
+        const headerRow = document.createElement('div');
+        headerRow.className = 'flex items-center justify-between mb-1';
+
+        const dayBadge = document.createElement('span');
+        dayBadge.className = `text-xs font-semibold px-1.5 py-0.5 rounded-md inline-block ${
+          isToday 
+            ? 'bg-indigo-600 text-white shadow-xs font-bold' 
+            : isCurrentMonth ? 'text-slate-700' : 'text-slate-400'
+        }`;
+        dayBadge.textContent = displayDayNumber + (isToday ? ' (今天)' : '');
+
+        // 悬浮快速新建按钮
+        const addBtn = document.createElement('button');
+        addBtn.className = 'add-task-btn opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-indigo-600 p-0.5 rounded hover:bg-slate-100';
+        addBtn.title = '为此日期添加待办';
+        addBtn.innerHTML = '<i class="fa-solid fa-plus text-[11px]"></i>';
+        addBtn.onclick = (e) => {
+          e.stopPropagation();
+          openTaskModal(null, cellDateStr);
+        };
+
+        headerRow.appendChild(dayBadge);
+        headerRow.appendChild(addBtn);
+        cell.appendChild(headerRow);
+
+        // 获取并渲染属于该日期的所有任务（非放弃状态）
+        const dayTasks = tasks.filter(t => t.date === cellDateStr && !t.abandoned);
+        const taskContainer = document.createElement('div');
+        taskContainer.className = 'space-y-1 flex-1 overflow-y-auto max-h-[88px] pr-0.5';
+
+        dayTasks.forEach(task => {
+          const taskElement = createCalendarTaskElement(task);
+          taskContainer.appendChild(taskElement);
+        });
+
+        cell.appendChild(taskContainer);
+        calendarGrid.appendChild(cell);
+      }
+    }
+
+    // 构建日历格子中的微型待办卡片
+    function createCalendarTaskElement(task) {
+      const el = document.createElement('div');
+      el.draggable = true;
+      el.setAttribute('data-id', task.id);
+
+      // 拖拽起始
+      el.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', task.id);
+        el.classList.add('opacity-40');
+      });
+      el.addEventListener('dragend', () => {
+        el.classList.remove('opacity-40');
+      });
+
+      // 样式
+      let priorityColor = 'border-l-indigo-500 bg-indigo-50/70 text-indigo-900';
+      if (task.priority === 'high') priorityColor = 'border-l-rose-500 bg-rose-50/70 text-rose-950';
+      if (task.priority === 'low') priorityColor = 'border-l-slate-400 bg-slate-50 text-slate-700';
+
+      const isDone = task.completed;
+      el.className = `text-[11px] leading-snug px-1.5 py-1 rounded border-l-2 border border-slate-200/80 shadow-2xs flex items-center justify-between group/task cursor-pointer transition ${priorityColor} ${
+        isDone ? 'opacity-55 line-through bg-slate-100 border-l-slate-400 text-slate-500' : 'hover:shadow-xs'
+      }`;
+
+      // 左侧：勾选框 + 标题
+      const leftPart = document.createElement('div');
+      leftPart.className = 'flex items-center space-x-1.5 truncate flex-1 min-w-0';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = isDone;
+      checkbox.className = 'rounded border-slate-300 text-indigo-600 focus:ring-0 cursor-pointer h-3 w-3 shrink-0';
+      checkbox.onclick = (e) => {
+        e.stopPropagation();
+        toggleTaskCompletion(task.id);
+      };
+
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'truncate select-none font-medium';
+      titleSpan.textContent = task.title;
+      titleSpan.title = `${task.title} ${task.desc ? ' - ' + task.desc : ''}`;
+
+      leftPart.appendChild(checkbox);
+      leftPart.appendChild(titleSpan);
+
+      // 右侧操作：放弃（入垃圾桶）快捷按钮
+      const actions = document.createElement('div');
+      actions.className = 'hidden group-hover/task:flex items-center space-x-1 shrink-0 ml-1';
+
+      const abandonBtn = document.createElement('button');
+      abandonBtn.className = 'text-slate-400 hover:text-rose-600 p-0.5 rounded transition';
+      abandonBtn.title = '决定放弃(移至垃圾桶)';
+      abandonBtn.innerHTML = '<i class="fa-solid fa-trash-can text-[10px]"></i>';
+      abandonBtn.onclick = (e) => {
+        e.stopPropagation();
+        abandonTask(task.id);
+      };
+
+      actions.appendChild(abandonBtn);
+
+      el.appendChild(leftPart);
+      el.appendChild(actions);
+
+      // 点击打开详情编辑
+      el.onclick = () => openTaskModal(task);
+
+      return el;
+    }
+
+    // --- 5. 右侧未完成待办事项汇总渲染 ---
+    function renderPendingBox() {
+      const listContainer = document.getElementById('pendingTaskList');
+      const pendingBadge = document.getElementById('pendingBadge');
+
+      // 提取未完成、且非放弃的事项
+      let pendingList = tasks.filter(t => !t.completed && !t.abandoned);
+
+      // 按照过滤条件筛选
+      const todayStr = getTodayString();
+      if (activeFilter === 'today') {
+        pendingList = pendingList.filter(t => t.date === todayStr);
+      } else if (activeFilter === 'overdue') {
+        pendingList = pendingList.filter(t => t.date && t.date < todayStr);
+      } else if (activeFilter === 'high') {
+        pendingList = pendingList.filter(t => t.priority === 'high');
+      }
+
+      // 按计划日期升序排列
+      pendingList.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
+
+      pendingBadge.textContent = `${pendingList.length} 待处理`;
+
+      if (pendingList.length === 0) {
+        listContainer.innerHTML = `
+          <div class="h-64 flex flex-col items-center justify-center text-slate-400 text-center p-4">
+            <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-2 text-slate-300">
+              <i class="fa-solid fa-mug-hot text-xl"></i>
+            </div>
+            <p class="text-xs font-medium text-slate-500">当前没有未完成待办</p>
+            <p class="text-[11px] text-slate-400 mt-1">生活井井有条，享受放松时光吧！</p>
+          </div>
+        `;
+        return;
+      }
+
+      listContainer.innerHTML = '';
+      pendingList.forEach(task => {
+        const item = document.createElement('div');
+        item.draggable = true;
+        item.setAttribute('data-id', task.id);
+        item.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/plain', task.id);
+        });
+
+        const isOverdue = task.date && task.date < todayStr;
+        const isToday = task.date === todayStr;
+
+        let dateBadgeColor = 'bg-slate-100 text-slate-600';
+        let dateLabel = task.date;
+        if (isToday) {
+          dateBadgeColor = 'bg-indigo-100 text-indigo-700 font-semibold';
+          dateLabel = '今天';
+        } else if (isOverdue) {
+          dateBadgeColor = 'bg-rose-100 text-rose-700 font-semibold';
+          dateLabel = `逾期 (${task.date})`;
+        }
+
+        let priTag = '';
+        if (task.priority === 'high') {
+          priTag = '<span class="text-[10px] text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded font-medium border border-rose-100">高优</span>';
+        }
+
+        item.className = 'p-3 bg-white border border-slate-200/90 hover:border-indigo-300 rounded-xl shadow-2xs hover:shadow-xs transition duration-150 flex flex-col gap-2 group';
+
+        item.innerHTML = `
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex items-start space-x-2 flex-1 min-w-0">
+              <input type="checkbox" class="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-0 cursor-pointer h-4 w-4 shrink-0 transition" title="勾选标记完成">
+              <div class="flex-1 min-w-0">
+                <p class="text-xs sm:text-sm font-semibold text-slate-800 leading-snug break-words">${escapeHtml(task.title)}</p>
+                ${task.desc ? `<p class="text-[11px] text-slate-400 line-clamp-1 mt-0.5">${escapeHtml(task.desc)}</p>` : ''}
+              </div>
+            </div>
+            <button class="abandon-btn text-slate-300 hover:text-rose-600 p-1 rounded transition opacity-80 group-hover:opacity-100" title="决定放弃 (移入垃圾桶)">
+              <i class="fa-solid fa-trash-can text-xs"></i>
+            </button>
+          </div>
+
+          <div class="flex items-center justify-between text-[11px] pt-1 border-t border-slate-50">
+            <div class="flex items-center space-x-1.5">
+              <span class="px-2 py-0.5 rounded-md text-[10px] ${dateBadgeColor}">
+                <i class="fa-regular fa-clock text-[9px] mr-0.5"></i> ${dateLabel}
+              </span>
+              ${priTag}
+            </div>
+            <button class="edit-btn text-slate-400 hover:text-indigo-600 text-[11px] font-medium transition">
+              修改
+            </button>
+          </div>
+        `;
+
+        // 绑定事件
+        const chk = item.querySelector('input[type="checkbox"]');
+        chk.onclick = () => toggleTaskCompletion(task.id);
+
+        const abBtn = item.querySelector('.abandon-btn');
+        abBtn.onclick = () => abandonTask(task.id);
+
+        const edBtn = item.querySelector('.edit-btn');
+        edBtn.onclick = () => openTaskModal(task);
+
+        listContainer.appendChild(item);
+      });
+    }
+
+    // --- 6. 底部垃圾桶渲染与回收管理 ---
+    function renderTrashBin() {
+      const trashList = document.getElementById('trashList');
+      const trashCountBadge = document.getElementById('trashCountBadge');
+
+      const abandonedTasks = tasks.filter(t => t.abandoned);
+      trashCountBadge.textContent = abandonedTasks.length;
+
+      if (abandonedTasks.length === 0) {
+        trashList.innerHTML = `
+          <div class="col-span-full py-8 text-center text-slate-400 text-xs">
+            <i class="fa-solid fa-recycle text-slate-300 text-2xl mb-1.5 block"></i>
+            垃圾桶目前是空的。无需执行的事项可在日历或待办栏点击放弃投送至此。
+          </div>
+        `;
+        return;
+      }
+
+      trashList.innerHTML = '';
+      abandonedTasks.forEach(task => {
+        const card = document.createElement('div');
+        card.className = 'bg-rose-50/50 border border-rose-200/80 rounded-xl p-2.5 flex flex-col justify-between space-y-1.5 hover:bg-rose-50 transition text-xs';
+
+        card.innerHTML = `
+          <div>
+            <div class="flex items-start justify-between gap-1">
+              <h4 class="text-xs font-semibold text-slate-700 line-through truncate flex-1" title="${escapeHtml(task.title)}">
+                ${escapeHtml(task.title)}
+              </h4>
+              <span class="text-[9px] bg-rose-100 text-rose-700 px-1 py-0.2 rounded shrink-0">已放弃</span>
+            </div>
+            <p class="text-[10px] text-slate-400 mt-0.5 flex items-center">
+              <i class="fa-regular fa-calendar-xmark mr-1"></i> 原日程: ${task.date || '未定'}
+            </p>
+          </div>
+
+          <div class="flex items-center justify-end space-x-1.5 pt-1.5 border-t border-rose-100">
+            <button class="restore-btn text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center space-x-1 px-1.5 py-0.5 rounded hover:bg-indigo-50 transition">
+              <i class="fa-solid fa-rotate-left text-[9px]"></i>
+              <span>恢复</span>
+            </button>
+            <button class="purge-btn text-[11px] text-rose-600 hover:text-rose-800 font-semibold flex items-center space-x-1 px-1.5 py-0.5 rounded hover:bg-rose-100 transition">
+              <i class="fa-solid fa-xmark text-[10px]"></i>
+              <span>销毁</span>
+            </button>
+          </div>
+        `;
+
+        // 恢复事件
+        card.querySelector('.restore-btn').onclick = () => restoreTask(task.id);
+        // 彻底删除
+        card.querySelector('.purge-btn').onclick = () => purgeTask(task.id);
+
+        trashList.appendChild(card);
+      });
+    }
+
+    // 更新顶部统揽数字
+    function updateStatistics() {
+      const activeTasks = tasks.filter(t => !t.abandoned);
+      const pending = activeTasks.filter(t => !t.completed).length;
+      const completed = activeTasks.filter(t => t.completed).length;
+
+      document.getElementById('statPendingCount').textContent = pending;
+      document.getElementById('statCompletedCount').textContent = completed;
+    }
+
+    // --- 7. 数据动作业务逻辑 ---
+
+    // 切换完成态
+    function toggleTaskCompletion(id) {
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+      task.completed = !task.completed;
+      saveState();
+      showToast(task.completed ? '事项已标记为完成！' : '事项已恢复为待办');
+    }
+
+    // 放弃事项（投递至垃圾桶）
+    function abandonTask(id) {
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+      task.abandoned = true;
+      task.abandonedAt = Date.now();
+      saveState();
+      showToast('事项已移至底部垃圾桶', 'danger');
+    }
+
+    // 从垃圾桶恢复事项
+    function restoreTask(id) {
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+      task.abandoned = false;
+      task.completed = false; // 恢复时默认未完成
+      delete task.abandonedAt;
+      saveState();
+      showToast('事项已重新恢复到待办日程', 'info');
+    }
+
+    // 彻底销毁单个事项
+    function purgeTask(id) {
+      tasks = tasks.filter(t => t.id !== id);
+      saveState();
+      showToast('事项已彻底删除', 'danger');
+    }
+
+    // 清空垃圾桶
+    function emptyTrash() {
+      const trashCount = tasks.filter(t => t.abandoned).length;
+      if (trashCount === 0) {
+        showToast('垃圾桶已是空的');
+        return;
+      }
+      tasks = tasks.filter(t => !t.abandoned);
+      saveState();
+      showToast(`已清空垃圾桶中的 ${trashCount} 项内容`, 'danger');
+    }
+
+    // 重新安排日期 (拖拽或修改)
+    function rescheduleTask(id, newDate) {
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+      task.date = newDate;
+      // 若原先在垃圾桶，移到日期则自动激活
+      if (task.abandoned) task.abandoned = false;
+      saveState();
+      showToast(`已将事项改期至 ${newDate}`);
+    }
+
+    // --- 8. 模态框与新建/修改逻辑 ---
+    const taskModal = document.getElementById('taskModal');
+    const taskModalDialog = document.getElementById('taskModalDialog');
+    const taskForm = document.getElementById('taskForm');
+
+    function openTaskModal(task = null, defaultDate = null) {
+      taskForm.reset();
+      if (task) {
+        document.getElementById('modalTitle').textContent = '编辑待办日程';
+        document.getElementById('taskFormId').value = task.id;
+        document.getElementById('taskInputTitle').value = task.title;
+        document.getElementById('taskInputDate').value = task.date || getTodayString();
+        document.getElementById('taskInputPriority').value = task.priority || 'medium';
+        document.getElementById('taskInputCategory').value = task.category || 'work';
+        document.getElementById('taskInputDesc').value = task.desc || '';
+      } else {
+        document.getElementById('modalTitle').textContent = '添加新日程待办';
+        document.getElementById('taskFormId').value = '';
+        document.getElementById('taskInputDate').value = defaultDate || getTodayString();
+        document.getElementById('taskInputPriority').value = 'medium';
+        document.getElementById('taskInputCategory').value = 'work';
+      }
+
+      taskModal.classList.remove('hidden');
+      setTimeout(() => {
+        taskModal.classList.remove('opacity-0');
+        taskModalDialog.classList.remove('scale-95');
+        taskModalDialog.classList.add('scale-100');
+        document.getElementById('taskInputTitle').focus();
+      }, 10);
+    }
+
+    function closeTaskModal() {
+      taskModal.classList.add('opacity-0');
+      taskModalDialog.classList.remove('scale-100');
+      taskModalDialog.classList.add('scale-95');
+      setTimeout(() => {
+        taskModal.classList.add('hidden');
+      }, 200);
+    }
+
+    taskForm.onsubmit = (e) => {
+      e.preventDefault();
+      const id = document.getElementById('taskFormId').value;
+      const title = document.getElementById('taskInputTitle').value.trim();
+      const date = document.getElementById('taskInputDate').value;
+      const priority = document.getElementById('taskInputPriority').value;
+      const category = document.getElementById('taskInputCategory').value;
+      const desc = document.getElementById('taskInputDesc').value.trim();
+
+      if (!title || !date) return;
+
+      if (id) {
+        // 编辑已有
+        const existing = tasks.find(t => t.id === id);
+        if (existing) {
+          existing.title = title;
+          existing.date = date;
+          existing.priority = priority;
+          existing.category = category;
+          existing.desc = desc;
+          showToast('日程已更新');
+        }
+      } else {
+        // 新增
+        const newTask = {
+          id: 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+          title,
+          date,
+          priority,
+          category,
+          desc,
+          completed: false,
+          abandoned: false,
+          createdAt: Date.now()
+        };
+        tasks.push(newTask);
+        showToast('新建待办成功！');
+      }
+
+      saveState();
+      closeTaskModal();
+    };
+
+    // 转义 HTML 避免注入
+    function escapeHtml(text) {
+      if (!text) return '';
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // --- 9. 事件绑定与初始化 ---
+    window.onload = function() {
+      loadState();
+
+      // 月份前后切换
+      document.getElementById('prevMonthBtn').onclick = () => {
+        if (currentMonth === 0) {
+          currentMonth = 11;
+          currentYear--;
+        } else {
+          currentMonth--;
+        }
+        renderCalendar();
+      };
+
+      document.getElementById('nextMonthBtn').onclick = () => {
+        if (currentMonth === 11) {
+          currentMonth = 0;
+          currentYear++;
+        } else {
+          currentMonth++;
+        }
+        renderCalendar();
+      };
+
+      document.getElementById('todayBtn').onclick = () => {
+        currentYear = today.getFullYear();
+        currentMonth = today.getMonth();
+        renderCalendar();
+      };
+
+      // 顶部新建按钮
+      document.getElementById('globalAddTaskBtn').onclick = () => {
+        openTaskModal(null, getTodayString());
+      };
+
+      // 快速添加表单
+      document.getElementById('quickAddForm').onsubmit = (e) => {
+        e.preventDefault();
+        const input = document.getElementById('quickAddInput');
+        const val = input.value.trim();
+        if (!val) return;
+
+        tasks.push({
+          id: 'task_' + Date.now(),
+          title: val,
+          date: getTodayString(),
+          priority: 'medium',
+          category: 'work',
+          desc: '',
+          completed: false,
+          abandoned: false,
+          createdAt: Date.now()
+        });
+
+        input.value = '';
+        saveState();
+        showToast('已快速添加到今日待办');
+      };
+
+      // 侧边栏筛选切换
+      document.querySelectorAll('.filter-tab-btn').forEach(btn => {
+        btn.onclick = () => {
+          document.querySelectorAll('.filter-tab-btn').forEach(b => {
+            b.className = 'filter-tab-btn px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 transition';
+          });
+          btn.className = 'filter-tab-btn active px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-600 font-medium border border-indigo-200 transition';
+          activeFilter = btn.dataset.filter;
+          renderPendingBox();
+        };
+      });
+
+      // 模态框关闭
+      document.getElementById('closeModalBtn').onclick = closeTaskModal;
+      document.getElementById('cancelModalBtn').onclick = closeTaskModal;
+      taskModal.onclick = (e) => {
+        if (e.target === taskModal) closeTaskModal();
+      };
+
+      // 清空垃圾桶
+      document.getElementById('emptyTrashBtn').onclick = emptyTrash;
+
+      // 垃圾桶作为拖拽放置区域 (支持直接将日历或列表的任务拖入右下角垃圾桶)
+      const trashDropZone = document.getElementById('trashDropZone');
+      trashDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        trashDropZone.classList.add('trash-drag-over');
+      });
+      trashDropZone.addEventListener('dragleave', () => {
+        trashDropZone.classList.remove('trash-drag-over');
+      });
+      trashDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        trashDropZone.classList.remove('trash-drag-over');
+        const taskId = e.dataTransfer.getData('text/plain');
+        if (taskId) {
+          abandonTask(taskId);
+        }
+      });
+    };
+  </script>
+</body>
+</html>
